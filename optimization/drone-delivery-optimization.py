@@ -46,6 +46,48 @@ num_x = N * N # number of X[i,j] variables
 num_v = N * N # number of V[i,j] variables
 num_vars = num_x + num_v
 
+# no fly zone coordinates
+no_fly_polygon = np.array([
+    (30, 40),
+    (31, 42),
+    (34, 41),
+    (31, 39)
+])
+
+# line-polygon intersection check
+def ccw(A, B, C):
+    # returns True if the three points make a counter-clockwise turn.
+    return (C[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(C[0]-A[0])
+
+def segments_intersect(P1, P2, Q1, Q2):
+    # returns True if segment P1->P2 intersects segment Q1->Q2
+    return ccw(P1, Q1, Q2) != ccw(P2, Q1, Q2) and \
+           ccw(P1, P2, Q1) != ccw(P1, P2, Q2)
+
+def segment_intersects_polygon(P1, P2, poly):
+    # check all edges of a polygon
+    for k in range(len(poly)):
+        Q1 = poly[k]
+        Q2 = poly[(k+1) % len(poly)]
+        if segments_intersect(P1, P2, Q1, Q2):
+            return True
+    return False
+
+# build arc validity matrix
+invalid_arc = np.zeros((N, N), dtype=bool)
+
+for i in node_ids:
+    for j in node_ids:
+        if i == j:
+            invalid_arc[i,j] = True
+            continue
+
+        P1 = node_coords[i]
+        P2 = node_coords[j]
+
+        if segment_intersects_polygon(P1, P2, no_fly_polygon):
+            invalid_arc[i,j] = True
+
 def unpack(z):
     X = z[:num_x].reshape((N,N))
     V = z[num_x:].reshape((N,N))
@@ -101,12 +143,19 @@ def battery_limit(z):
 bounds = []
 
 # bound routing variables X[i,j] between 0 and 1
-bounds.extend([(0,1)] * num_x)
+for i in range(N):
+    for j in range(N):
+        if invalid_arc[i,j]:
+            bounds.append((0, 0))     # X[i,j] must be 0
+        else:
+            bounds.append((0, 1))     # normal arc
 
 # cruise speed allowed between 10 m/s and 20 m/s (assumption)
 speed_min = 10
 speed_max = 20
 bounds.extend([(speed_min, speed_max)] * num_v)
+
+
 
 # initial guess
 # route 0→1→2→3→0

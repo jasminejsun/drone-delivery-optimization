@@ -69,8 +69,12 @@ def _active_arcs(X: np.ndarray) -> Iterable[Tuple[int, int]]:
     return [tuple(map(int, ij)) for ij in indices]
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+
 def plot_route_with_order(
-    node_coords: NodeCoords,
+    node_coords,
     no_fly_polygon: np.ndarray,
     tour: Iterable[int],
     title: str = "Optimal Route (Ordered)",
@@ -114,6 +118,43 @@ def plot_route_with_order(
     for idx, (x, y) in node_coords.items():
         ax.text(x + 0.15, y + 0.15, str(idx), fontsize=11)
 
+    # ----- Direction arrow (bearing from north) -----
+    dir_deg = 40  # hard-coded, can be 0–360
+
+    # Get data bounds to place arrow nicely
+    all_x = [x for x, y in node_coords.values()]
+    all_y = [y for x, y in node_coords.values()]
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+
+    # Arrow origin near top-left of the data bounds
+    x0 = min_x + 0.1 * (max_x - min_x)
+    y0 = max_y - 0.1 * (max_y - min_y)
+
+    # Convert bearing-from-north to dx, dy in plot coordinates (x = east, y = north)
+    theta = np.deg2rad(dir_deg)
+    L = 0.2 * max(max_x - min_x, max_y - min_y)  # arrow length
+    dx = np.sin(theta) * L
+    dy = np.cos(theta) * L
+
+    ax.arrow(
+        x0, y0,
+        dx, dy,
+        length_includes_head=True,
+        head_width=0.03 * L,
+        head_length=0.05 * L,
+        fc="orange",
+        ec="orange",
+    )
+    ax.text(
+        x0, y0,
+        f"{dir_deg:.0f}°",
+        fontsize=9,
+        color="orange",
+        ha="right",
+        va="bottom",
+    )
+
     ax.set_title(title)
     ax.set_xlabel("X (km)")
     ax.set_ylabel("Y (km)")
@@ -121,6 +162,7 @@ def plot_route_with_order(
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend(loc="best")
     return ax
+
 
 
 def plot_arc_energy_breakdown(

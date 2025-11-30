@@ -1,8 +1,9 @@
 import numpy as np
 import pulp as pl
+import math
 
 # node data (simulation values from paper)
-# depot + 3 customers
+# depot + customers
 node_coords = {
     0: (35, 35),  # depot
     1: (40.356, 36.287),
@@ -45,6 +46,45 @@ for i in node_ids:
         xj, yj = node_coords[j]
         d[i, j] = np.sqrt((xj - xi) ** 2 + (yj - yi) ** 2)
 
+WIND_DIRECTION = 40 # (0 - 360) degrees from north
+
+def direction_multiplier(direction_deg, wind_deg,
+                         max_factor=1.5, min_factor=0.5):
+    # Smallest angle difference between directions, in [0, 180]
+    diff = abs((direction_deg - wind_deg + 180) % 360 - 180)
+
+    # Alignment in [-1, 1]: 1 = same direction, -1 = opposite
+    alignment = math.cos(math.radians(diff))
+
+    # Map alignment [-1, 1] to [min_factor, max_factor]
+    base = (max_factor + min_factor) / 2.0   # 1.0 for 0.8–1.2
+    scale = (max_factor - min_factor) / 2.0  # 0.2 for 0.8–1.2
+
+    return base + alignment * scale
+
+def angle_from_north(x1, y1, x2, y2):
+    dx = x2 - x1
+    dy = y2 - y1
+
+    # atan2(dx, dy) instead of atan2(dy, dx) gives angle relative to +Y (north)
+    angle_rad = math.atan2(dx, dy)
+    angle_deg = math.degrees(angle_rad)
+
+    # Normalize to [0, 360)
+    return (angle_deg + 360) % 360
+
+# direction headwind / tailwind co-efficient
+# > 1 == tailwind
+# < 1 == headwind
+multiplier = np.zeros((N, N))
+for i in node_ids:
+    xi, yi = node_coords[i]
+    for j in node_ids:
+        xj, yj = node_coords[j]
+        direction = angle_from_north(xi, yi, xj, yj)
+        multiplier[i, j] = direction_multiplier(direction, WIND_DIRECTION)
+
+print(multiplier)
 # no fly zone coordinates
 # changes optimized path: 0 -> 2 -> 1 -> 3 -> 0
 no_fly_polygon = np.array([
@@ -106,7 +146,8 @@ for (i, j) in valid_arcs:
     dist_km = d[i, j]               # assume distance in km
     for s_idx, v in enumerate(speed_levels):
         time_s = (dist_km * 1000.0) / v      # seconds
-        E_ij_s = (P_const * time_s) / 3.6e6  # kwh
+        E_ij_s = (P_const * time_s) / (3.6e6 * multiplier[(i, j)]) # kwh
+
         energy[(i, j, s_idx)] = E_ij_s
         cost[(i, j, s_idx)] = c3 * E_ij_s
 
